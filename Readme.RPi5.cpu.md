@@ -19,8 +19,13 @@ pip install -U --force-reinstall flatbuffers==23.5.26
 Installing tensorflow and onnx are required if you want to convert yolov8 model to tflite.
 I also had to upgrade flatbuffers for tflite export
 
-## Export yolov8n to tflite and onnx format 
+## Export yolov8n to tflite and onnx format
+```
 python export_models.py
+python export_models.py --format onnx
+```
+Note, It seems like there is a bug when I export tflite and onnx at the same time.
+So for now export them separately.
 
 ## Run 
 

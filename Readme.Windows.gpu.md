@@ -12,8 +12,14 @@ pip install ultralytics==8.0.221
 pip install --upgrade torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
 ````
 
-## Export yolov8n to tflite and onnx format 
+## Export yolov8n to tflite and onnx format
+```
 python export_models.py
+python export_models.py --format onnx
+```
+Note, It seems like there is a bug when I export tflite and onnx at the same time.
+So for now export them separately. 
+
 
 ## Run 
 
