@@ -6,8 +6,8 @@ Tested with RTX 2080 super(8GB), windows 11.
 
 ## Create environment
 ````
-conda create -n yolov8 python=3.9
-conda activate yolov8
+conda create -n yolov8_gpu python=3.9
+conda activate yolov8_gpu
 pip install ultralytics==8.0.221
 pip install --upgrade torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
 ````

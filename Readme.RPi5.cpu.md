@@ -8,8 +8,8 @@ sudo apt-get install cmake
 
 ## Create environment
 ````
-conda create -n yolov8 python=3.9
-conda activate yolov8
+conda create -n yolov8_cpu python=3.9
+conda activate yolov8_cpu
 pip install ultralytics==8.0.221
 pip install tensorflow==2.13.1
 pip install onnx==1.15.0 onnxruntime==1.16.3 onnxsim==0.4.33
