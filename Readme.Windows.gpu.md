@@ -10,6 +10,7 @@ conda create -n yolov8_gpu python=3.9
 conda activate yolov8_gpu
 pip install ultralytics==8.0.221
 pip install --upgrade torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+pip install tensorflow==2.13.1
 ````
 
 ## Export yolov8n to tflite and onnx format
