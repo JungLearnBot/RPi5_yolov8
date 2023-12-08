@@ -1,15 +1,8 @@
-import numpy as np
-
 import cv2
-import time
 import argparse
 
 from utils import SimpleFPS, draw_fps, draw_annotation
-
-# import torch
-# from ultralytics import YOLO
 from yolo_manager import YoloDetectorWrapper
-
 
 if __name__ == '__main__':
 
@@ -22,7 +15,6 @@ if __name__ == '__main__':
 
     model = YoloDetectorWrapper(args.model)
     cap = cv2.VideoCapture(0)
-
 
     fps_util = SimpleFPS()
     while cap.isOpened():
