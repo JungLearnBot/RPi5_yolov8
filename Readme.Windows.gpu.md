@@ -26,7 +26,7 @@ So for now export them separately.
 
 ### Run yolov8n.pt
 
-- --debug option show debug window with annotation, dood for debugging but slows down the fps
+- --debug option show debug window with annotation, good for debugging but slows down the fps
 - --print_fps option prints fps every 1 sec.
 ```
 python main.py --debug

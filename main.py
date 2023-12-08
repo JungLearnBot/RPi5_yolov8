@@ -3,186 +3,12 @@ import numpy as np
 import cv2
 import time
 import argparse
-from pathlib import Path
 
-import torch
-from ultralytics import YOLO
-from ultralytics.utils.plotting import Annotator
-import tensorflow as tf
+from utils import SimpleFPS, draw_fps, draw_annotation
 
-from ultralytics.engine.results import Results
-from ultralytics.utils import ops  # for postprocess
-
-# .pt files contains names in there but exported onnx/tflite don't have them.
-yolo_default_label_names = {0: 'person', 1: 'bicycle', 2: 'car', 3: 'motorcycle', 4: 'airplane', 5: 'bus', 6: 'train',
-                            7: 'truck', 8: 'boat', 9: 'traffic light', 10: 'fire hydrant', 11: 'stop sign',
-                            12: 'parking meter', 13: 'bench', 14: 'bird', 15: 'cat', 16: 'dog', 17: 'horse',
-                            18: 'sheep', 19: 'cow', 20: 'elephant', 21: 'bear', 22: 'zebra', 23: 'giraffe',
-                            24: 'backpack', 25: 'umbrella', 26: 'handbag', 27: 'tie', 28: 'suitcase', 29: 'frisbee',
-                            30: 'skis', 31: 'snowboard', 32: 'sports ball', 33: 'kite', 34: 'baseball bat',
-                            35: 'baseball glove', 36: 'skateboard', 37: 'surfboard', 38: 'tennis racket', 39: 'bottle',
-                            40: 'wine glass', 41: 'cup', 42: 'fork', 43: 'knife', 44: 'spoon', 45: 'bowl', 46: 'banana',
-                            47: 'apple', 48: 'sandwich', 49: 'orange', 50: 'broccoli', 51: 'carrot', 52: 'hot dog',
-                            53: 'pizza', 54: 'donut', 55: 'cake', 56: 'chair', 57: 'couch', 58: 'potted plant',
-                            59: 'bed', 60: 'dining table', 61: 'toilet', 62: 'tv', 63: 'laptop', 64: 'mouse',
-                            65: 'remote', 66: 'keyboard', 67: 'cell phone', 68: 'microwave', 69: 'oven', 70: 'toaster',
-                            71: 'sink', 72: 'refrigerator', 73: 'book', 74: 'clock', 75: 'vase', 76: 'scissors',
-                            77: 'teddy bear', 78: 'hair drier', 79: 'toothbrush'}
-
-
-class YoloDetector:
-    def __init__(self, model_path, task='detect'):
-        self.model = YOLO(model_path, task=task)
-
-        self.imgsz = 640  # assume 640 at the moment since it is the default one
-        if model_path.suffix == '.onnx':
-            # once exported to onnx, auto resizing doesn't seem to work as expected
-            # probably there is a better way but I'll just read it from onnx file
-            # and set the dimension when predict
-            # note, square images only atm
-            import onnx
-            dummy_model = onnx.load(str(model_path))
-            self.imgsz = dummy_model.graph.input[0].type.tensor_type.shape.dim[-1].dim_value
-            del dummy_model
-
-    def predict(self, frame, conf):
-        return self.model.predict(source=frame, save=False, conf=conf, save_txt=False, show=False, verbose=False,
-                                  imgsz=self.imgsz)
-
-    def get_label_names(self):
-        if self.model.names is None or len(self.model.names) == 0:
-            return yolo_default_label_names
-        return self.model.names
-
-
-class YoloDetectorTFLite:
-    def __init__(self, model_path):
-        self.name = model_path.name
-        self.interpreter = tf.lite.Interpreter(model_path=str(model_path))
-        self.interpreter.allocate_tensors()
-
-    def predict(self, frame, conf):
-        orig_imgs = [frame]
-
-        # Get input and output tensors.
-        input_details = self.interpreter.get_input_details()
-        output_details = self.interpreter.get_output_details()
-
-        # Test the model on random input data.
-        input_shape = input_details[0]['shape']
-
-        # TODO check shape of input_shape and frame.shape
-        # input_data = np.array(np.random.random_sample(input_shape), dtype=np.float32)
-        _, w, h, _ = input_shape
-
-        # check width and height
-        if frame.shape[0] != h or frame.shape[1] != w:
-            input_img = cv2.resize(frame, (w, h))
-        else:
-            input_img = frame
-        input_img = input_img[np.newaxis, ...]  # add batch dim
-        input_img = input_img.astype(np.float32) / 255.  # change to float img
-
-        self.interpreter.set_tensor(input_details[0]['index'], input_img)
-
-        self.interpreter.invoke()
-
-        preds = self.interpreter.get_tensor(output_details[0]['index'])
-
-        ######################################################################
-        # borrowed from ultralytics\models\yolo\detect\predict.py #postprocess
-
-        # convert to torch to use ops.non_max_suppression
-        # ultralytics is working on none-deeplearning based non_max_suppression
-        # https://github.com/ultralytics/ultralytics/issues/1777
-        # maybe someday, but for now, just workaround
-        preds = torch.from_numpy(preds)
-        preds = ops.non_max_suppression(preds,
-                                        conf,
-                                        0.7,  # todo, make into arg
-                                        agnostic=False,
-                                        max_det=300,
-                                        classes=None)  # hack. just copied values from execution of yolov8n.pt
-
-        results = []
-        for i, pred in enumerate(preds):
-            orig_img = orig_imgs[i]
-
-            # tflite result are in [0, 1]
-            # scale them by width (w == h)
-            pred[:, :4] *= w
-
-            pred[:, :4] = ops.scale_boxes(input_img.shape[1:], pred[:, :4], orig_img.shape)
-            img_path = ""
-            results.append(Results(orig_img, path=img_path, names=yolo_default_label_names, boxes=pred))
-
-        return results
-
-    def get_label_names(self):
-        return yolo_default_label_names
-
-
-class YoloDetectorWrapper:
-    def __init__(self, model_path):
-        model_path = Path(model_path)
-
-        if model_path.suffix == '.tflite':
-            self.detector = YoloDetectorTFLite(model_path)
-        else:
-            self.detector = YoloDetector(model_path)
-
-    def predict(self, frame, conf=0.5):
-        return self.detector.predict(frame, conf=conf)
-
-    def get_label_names(self):
-        return self.detector.get_label_names()
-
-
-class SimpleFPS:
-    def __init__(self):
-        self.start_time = time.time()
-        self.display_time_sec = 1  # update fps display
-        self.fps = 0
-        self.frame_counter = 0
-        self.is_fps_updated = False
-
-    def get_fps(self):
-        elapsed = time.time() - self.start_time
-        self.frame_counter += 1
-        is_fps_updated = False
-
-        if elapsed > self.display_time_sec:
-            self.fps = self.frame_counter / elapsed
-            self.frame_counter = 0
-            self.start_time = time.time()
-            is_fps_updated = True
-
-        return int(self.fps), is_fps_updated
-
-
-def draw_fps(img, fps):
-    font = cv2.FONT_HERSHEY_SIMPLEX
-    # putting the FPS count on the frame
-    cv2.putText(img, str(fps), (7, 70), font, 3, (100, 255, 0), 3, cv2.LINE_AA)
-
-
-def draw_annotation(img, label_names, results):
-    annotator = None
-    for r in results:
-        annotator = Annotator(img)
-
-        boxes = r.boxes
-        for box in boxes:
-            b = box.xyxy[0]  # get box coordinates in (top, left, bottom, right) format
-            c = box.cls
-            annotator.box_label(b, label_names[int(c)])
-
-    if annotator is not None:
-        annotated_img = annotator.result()
-    else:
-        annotated_img = img.copy()
-
-    return annotated_img
+# import torch
+# from ultralytics import YOLO
+from yolo_manager import YoloDetectorWrapper
 
 
 if __name__ == '__main__':
@@ -197,9 +23,9 @@ if __name__ == '__main__':
     model = YoloDetectorWrapper(args.model)
     cap = cv2.VideoCapture(0)
 
+
     fps_util = SimpleFPS()
     while cap.isOpened():
-
         ret, frame = cap.read()
 
         if not ret:
