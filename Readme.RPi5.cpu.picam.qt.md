@@ -2,10 +2,14 @@
 Pi Camera Module 3 does not play well with OpenCV VideoCapture. There is some work around in some other OS but I haven't found any that works in Raspberry Pi 5 OS (64)
 
 The only solution seems to use **picamera2** package but it does not install virtual environment:
+```
 https://github.com/raspberrypi/picamera2/issues/446
 https://github.com/raspberrypi/picamera2/issues/503
+```
 due to libcamera can only be installed by sudo apt install
-So as a work around, I fixed the conda version to 3.11, created environment and copied necessary libraries so I can have a separate conda environment.
+
+So as a workaround, I fixed the conda python version to 3.11, created environment 
+and copied necessary libraries so I can have a separate conda environment.
 
 There is another problem I encountered with **picamera2** is that it doesn't work with cv2.imshow. It gets stuck and frozen. I couldn't find obvious solution. So I decided to use Qt for visualisation.
 But this time Qt have problem with opencv in Pi OS, so as a workround **opencv-python-headless** is installed.
