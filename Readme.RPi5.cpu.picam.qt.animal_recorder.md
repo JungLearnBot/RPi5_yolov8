@@ -79,7 +79,7 @@ sudo apt install nginx
 
 Install firewall if not installed:
 ```
-apt-get install ufw
+sudo apt-get install ufw
 ```
 
 Basically I followed:
