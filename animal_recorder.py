@@ -194,9 +194,9 @@ class App(QWidget):
         else:
             self.yolo_detector = YoloDetectorWrapper(args.model)
 
-        target_indics = set([14, 15, 16])  # bird, cat, dog
+        target_indices = {14, 15, 16}  # bird, cat, dog
         # if we find targets in least 2 frames in a row, we start recording
-        self.detection_counter = FrameCounter(target_indics, 2)
+        self.detection_counter = FrameCounter(target_indices, 2)
 
         self.setWindowTitle("Qt UI")
         self.disply_width = 640
