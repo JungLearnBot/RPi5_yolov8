@@ -7,6 +7,13 @@ from pathlib import Path
 import cv2
 import numpy as np
 
+try:
+    from pycoral.utils.edgetpu import make_interpreter
+    from pycoral.adapters import common
+except ModuleNotFoundError as m_err:
+    pass
+
+
 # .pt files contains names in there but exported onnx/tflite don't have them.
 yolo_default_label_names = {0: 'person', 1: 'bicycle', 2: 'car', 3: 'motorcycle', 4: 'airplane', 5: 'bus', 6: 'train',
                             7: 'truck', 8: 'boat', 9: 'traffic light', 10: 'fire hydrant', 11: 'stop sign',
@@ -50,9 +57,17 @@ class YoloDetector:
 
 
 class YoloDetectorTFLite:
-    def __init__(self, model_path):
+    def __init__(self, model_path, use_coral_tpu=False):
         self.name = model_path.name
-        self.interpreter = tf.lite.Interpreter(model_path=str(model_path))
+        
+        self.use_coral_tpu = use_coral_tpu
+        if use_coral_tpu:
+            # only use coral tpu interpreter if specified
+            self.interpreter = make_interpreter(str(model_path))
+        else:
+            # use normal tf.lite
+            self.interpreter = tf.lite.Interpreter(model_path=str(model_path))
+
         self.interpreter.allocate_tensors()
 
     def predict(self, frame, conf):
@@ -75,14 +90,35 @@ class YoloDetectorTFLite:
         else:
             input_img = frame
         input_img = input_img[np.newaxis, ...]  # add batch dim
-        input_img = input_img.astype(np.float32) / 255.  # change to float img
 
-        self.interpreter.set_tensor(input_details[0]['index'], input_img)
+        if self.use_coral_tpu:
+            params = common.input_details(self.interpreter, 'quantization_parameters')
+            scale = params['scales']
+            zero_point = params['zero_points']
+            input_mean = 128.
+            input_std = 128.
+
+            normalized_input = (input_img - input_mean) / (input_std * scale) + zero_point
+            np.clip(normalized_input, 0, 255, out=normalized_input)
+            common.set_input(self.interpreter, normalized_input.astype(np.uint8))
+        else:
+            input_img = input_img.astype(np.float32) / 255.  # change to float img
+            self.interpreter.set_tensor(input_details[0]['index'], input_img)
 
         self.interpreter.invoke()
 
         preds = self.interpreter.get_tensor(output_details[0]['index'])
 
+        if self.use_coral_tpu:
+            output_details = self.interpreter.get_output_details()[0]
+           
+            if np.issubdtype(preds.dtype, np.integer):
+                scale, zero_point = output_details['quantization']
+                # Always convert to np.int64 to avoid overflow on subtraction.
+                preds = scale * (preds.astype(np.int64) - zero_point)
+                preds = preds.astype(np.float32)
+            
+        
         ######################################################################
         # borrowed from ultralytics\models\yolo\detect\predict.py #postprocess
 
@@ -117,11 +153,11 @@ class YoloDetectorTFLite:
 
 
 class YoloDetectorWrapper:
-    def __init__(self, model_path):
+    def __init__(self, model_path, use_coral_tpu=False):
         model_path = Path(model_path)
 
-        if model_path.suffix == '.tflite':
-            self.detector = YoloDetectorTFLite(model_path)
+        if use_coral_tpu or model_path.suffix == '.tflite':
+            self.detector = YoloDetectorTFLite(model_path, use_coral_tpu)
         else:
             self.detector = YoloDetector(model_path)
 
